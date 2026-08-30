@@ -18,7 +18,7 @@ SLACK_USER_TO_BRANCH: dict[str, str] = {
 # Usuarios que ven TODOS los casos de la demo, sin filtrar por sucursal.
 SUPERUSER_SLACK_IDS: set[str] = {
     # "U0123ABCDEF",
-    U081F514Z5H
+    "U081F514Z5H",
 }
 
 
