@@ -89,3 +89,8 @@ def _build_filter_select(selected_status: CaseStatus | None) -> dict:
         "options": options,
         "initial_option": initial_option,
     }
+
+
+def format_status_label(status: CaseStatus) -> str:
+    """Label de presentación (con emoji) para un estado — reutilizable fuera de este módulo."""
+    return _STATUS_LABELS.get(status, status.value)
