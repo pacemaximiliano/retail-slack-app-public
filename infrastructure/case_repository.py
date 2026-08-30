@@ -25,11 +25,18 @@ from infrastructure.salesforce_client import SalesforceClient
 # atada (dispara un Flow ajeno que espera datos que nuestros casos no
 # tienen), así que armamos "EscalatedInternally" como valor exclusivo
 # nuestro, sin compartir nada con otras demos del mismo org.
+# Nota: NO reusamos el valor original "Escalated" para nuestro estado de
+# escalación interna, ni tampoco un valor que contenga la palabra
+# "Escalat" — la otra demo del org tiene un Flow ("Case - Escalación de
+# Emergencia") que parece dispararse por esa palabra en el texto del
+# Status (no por el valor exacto), y falla porque espera datos que
+# nuestros casos no tienen. Por eso el valor elegido acá no comparte
+# ninguna palabra con "Escalación/Escalated".
 _STATUS_TO_SALESFORCE: dict[CaseStatus, str] = {
     CaseStatus.NEW: "New",
     CaseStatus.ASSIGNED_TO_BRANCH: "AssignedToBranch",
     CaseStatus.IN_PROGRESS: "In Progress",
-    CaseStatus.ESCALATED_INTERNAL: "EscalatedInternally",
+    CaseStatus.ESCALATED_INTERNAL: "RoutedToInternalTeam",
     CaseStatus.RETURNED_TO_CALL_CENTER: "ReturnedToCallCenter",
     CaseStatus.CLOSED: "Closed",
 }
