@@ -31,7 +31,7 @@ _SALESFORCE_TO_STATUS: dict[str, CaseStatus] = {v: k for k, v in _STATUS_TO_SALE
 
 _QUERY_FIELDS = (
     "Id, CaseNumber, Subject, Description, Status, "
-    "Branch__c, Internal_Team__c, CreatedDate, LastModifiedDate"
+    "Branch__c, Internal_Team__c, Slack_Channel__c, CreatedDate, LastModifiedDate"
 )
 
 
@@ -66,6 +66,7 @@ class CaseRepository:
             status=_SALESFORCE_TO_STATUS[salesforce_status],
             branch=record.get("Branch__c") or "",
             assigned_team=record.get("Internal_Team__c"),
+            channel=record.get("Slack_Channel__c"),
             created_at=_parse_salesforce_datetime(record["CreatedDate"]),
             updated_at=_parse_salesforce_datetime(record["LastModifiedDate"]),
         )
@@ -108,5 +109,19 @@ class CaseRepository:
                 "Status": _STATUS_TO_SALESFORCE[case.status],
                 "Branch__c": case.branch,
                 "Internal_Team__c": case.assigned_team,
+                "Slack_Channel__c": case.channel,
             },
         )
+
+    async def list_case_comments(self, case_id: str) -> list[str]:
+        """
+        Trae los comentarios existentes de un caso (objeto estándar CaseComment
+        de Salesforce), en orden cronológico. Se usan para el mensaje inicial
+        que se postea en el canal recién creado.
+        """
+        soql = (
+            f"SELECT CommentBody FROM CaseComment "
+            f"WHERE ParentId = '{case_id}' ORDER BY CreatedDate ASC"
+        )
+        result = await self._client.query(soql)
+        return [record["CommentBody"] for record in result["records"] if record.get("CommentBody")]
