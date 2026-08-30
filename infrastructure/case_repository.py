@@ -13,17 +13,23 @@ from infrastructure.salesforce_client import SalesforceClient
 # Mapeo entre nuestro CaseStatus y el valor real que devuelve el picklist
 # Status de Salesforce por API.
 #
-# OJO con esto: para los dos valores que agregamos nosotros (Assigned to
-# Branch / Returned to Call Center), el valor que Salesforce devuelve por
-# API es el "API Name" tal cual se tipeó al crearlos — SIN espacios (ej.
-# "AssignedToBranch") — no el label que se ve en pantalla ("Assigned to
-# Branch"). Los 4 valores originales sí coinciden label = API Name porque
-# fueron renombrados así previamente.
+# OJO con esto: para los tres valores que agregamos nosotros (Assigned to
+# Branch / Escalated Internally / Returned to Call Center), el valor que
+# Salesforce devuelve por API es el "API Name" tal cual se tipeó al
+# crearlos — SIN espacios (ej. "AssignedToBranch") — no el label que se ve
+# en pantalla. Los 2 valores originales sí coinciden label = API Name
+# porque fueron renombrados así previamente.
+#
+# Nota: NO reusamos el valor original "Escalated" para nuestro estado de
+# escalación interna — ese valor tiene una automatización de otra demo
+# atada (dispara un Flow ajeno que espera datos que nuestros casos no
+# tienen), así que armamos "EscalatedInternally" como valor exclusivo
+# nuestro, sin compartir nada con otras demos del mismo org.
 _STATUS_TO_SALESFORCE: dict[CaseStatus, str] = {
     CaseStatus.NEW: "New",
     CaseStatus.ASSIGNED_TO_BRANCH: "AssignedToBranch",
     CaseStatus.IN_PROGRESS: "In Progress",
-    CaseStatus.ESCALATED_INTERNAL: "Escalated",
+    CaseStatus.ESCALATED_INTERNAL: "EscalatedInternally",
     CaseStatus.RETURNED_TO_CALL_CENTER: "ReturnedToCallCenter",
     CaseStatus.CLOSED: "Closed",
 }
