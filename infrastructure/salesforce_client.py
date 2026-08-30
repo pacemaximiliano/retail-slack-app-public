@@ -16,6 +16,10 @@ class SalesforceAuthError(Exception):
     """Falló la autenticación contra Salesforce."""
 
 
+class SalesforceApiError(Exception):
+    """La API de Salesforce devolvió un error (4xx/5xx) en una operación puntual."""
+
+
 class SalesforceClient:
     def __init__(self, settings: SalesforceSettings):
         self._settings = settings
@@ -66,22 +70,40 @@ class SalesforceClient:
         """Ejecuta una consulta SOQL. Devuelve el JSON crudo de Salesforce."""
         path = f"/services/data/{self._settings.api_version}/query"
         response = await self._request("GET", path, params={"q": soql})
-        response.raise_for_status()
+        self._raise_if_error(response)
         return response.json()
 
     async def get_sobject(self, object_name: str, record_id: str) -> dict:
         """Obtiene un registro puntual por Id, ej. get_sobject('Case', '500...')."""
         path = f"/services/data/{self._settings.api_version}/sobjects/{object_name}/{record_id}"
         response = await self._request("GET", path)
-        response.raise_for_status()
+        self._raise_if_error(response)
         return response.json()
+
+    async def create_sobject(self, object_name: str, fields: dict) -> str:
+        """Crea un registro nuevo. Devuelve el Id generado por Salesforce."""
+        path = f"/services/data/{self._settings.api_version}/sobjects/{object_name}"
+        response = await self._request("POST", path, json=fields)
+        self._raise_if_error(response)
+        return response.json()["id"]
 
     async def update_sobject(self, object_name: str, record_id: str, fields: dict) -> None:
         """Actualiza campos puntuales de un registro (PATCH parcial)."""
         path = f"/services/data/{self._settings.api_version}/sobjects/{object_name}/{record_id}"
         response = await self._request("PATCH", path, json=fields)
-        if response.status_code not in (200, 204):
-            response.raise_for_status()
+        self._raise_if_error(response)
+
+    @staticmethod
+    def _raise_if_error(response: httpx.Response) -> None:
+        """
+        Si la respuesta es un error, incluye el body real de Salesforce en la
+        excepción — httpx.raise_for_status() por sí solo no lo muestra, y ese
+        body es donde Salesforce explica la causa real (errorCode + message).
+        """
+        if response.status_code not in (200, 201, 204):
+            raise SalesforceApiError(
+                f"Error de Salesforce ({response.status_code}) en {response.request.url}: {response.text}"
+            )
 
     async def aclose(self) -> None:
         """Cierra la conexión HTTP subyacente. Llamar al apagar la app."""
