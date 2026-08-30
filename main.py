@@ -13,16 +13,18 @@ sola vez al arrancar, y registra los handlers de Slack:
 """
 
 import uvicorn
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Header, HTTPException, Request
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
 from slack_bolt.app.async_app import AsyncApp
 
+from application.case_channel_service import CaseChannelService
 from application.case_service import CaseService
 from config.branch_mapping import get_branch_for_user, is_superuser
 from config.settings import get_settings
 from domain.case import InvalidCaseTransition
 from infrastructure.case_repository import CaseRepository
 from infrastructure.salesforce_client import SalesforceClient
+from infrastructure.slack_client import SlackClient
 from views.case_detail_modal import CALLBACK_ID, build_case_detail_modal
 from views.home import build_home_view
 
@@ -30,10 +32,13 @@ settings = get_settings()
 
 slack_app = AsyncApp(token=settings.slack.bot_token, signing_secret=settings.slack.signing_secret)
 
-# Una sola instancia para toda la vida del proceso — se cierra en el
-# shutdown de FastAPI, más abajo.
+# Una sola instancia de cada cliente/repositorio para toda la vida del
+# proceso — se cierra en el shutdown de FastAPI, más abajo.
 salesforce_client = SalesforceClient(settings.salesforce)
-case_service = CaseService(CaseRepository(salesforce_client))
+slack_client = SlackClient(settings.slack)
+case_repository = CaseRepository(salesforce_client)
+case_service = CaseService(case_repository)
+case_channel_service = CaseChannelService(case_repository, slack_client)
 
 
 async def _publish_home(client, user_id: str) -> None:
@@ -106,6 +111,25 @@ async def slack_events(req: Request):
 
 @api.get("/health")
 async def health():
+    return {"status": "ok"}
+
+
+@api.post("/salesforce/webhook")
+async def salesforce_webhook(payload: dict, x_webhook_secret: str = Header(default=None)):
+    """
+    Recibe el aviso del Flow de Salesforce cuando un caso pasa a
+    'Assigned to Branch', y dispara la creación del canal.
+
+    Payload esperado: {"case_id": "500Hu00002XhkrQIAR"}
+    """
+    if x_webhook_secret != settings.webhook_secret:
+        raise HTTPException(status_code=401, detail="Webhook secret inválido")
+
+    case_id = payload.get("case_id")
+    if not case_id:
+        raise HTTPException(status_code=400, detail="Falta 'case_id' en el payload")
+
+    await case_channel_service.create_channel_for_case(case_id)
     return {"status": "ok"}
 
 

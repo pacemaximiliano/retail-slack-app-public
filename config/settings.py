@@ -41,6 +41,10 @@ class AppSettings(BaseSettings):
     env: str = Field(default="development", description="development | staging | production")
     port: int = Field(default=8000, description="Puerto en el que corre el servidor FastAPI.")
     log_level: str = Field(default="INFO")
+    webhook_secret: str = Field(
+        ...,
+        description="Secreto compartido para verificar que el webhook de Salesforce sea legítimo.",
+    )
 
     slack: SlackSettings = Field(default_factory=SlackSettings)
     salesforce: SalesforceSettings = Field(default_factory=SalesforceSettings)

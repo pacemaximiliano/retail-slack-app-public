@@ -66,6 +66,7 @@ class Case(BaseModel):
     status: CaseStatus
     branch: str = Field(..., description="Sucursal (branch) actualmente responsable del caso.")
     assigned_team: str | None = Field(default=None, description="Equipo interno de la sucursal, si fue derivado internamente.")
+    channel: str | None = Field(default=None, description="Id del canal de Slack asociado a este caso (ej. 'C0123ABCDEF').")
     created_at: datetime
     updated_at: datetime
 
