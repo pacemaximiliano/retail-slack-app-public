@@ -19,14 +19,14 @@ from slack_bolt.app.async_app import AsyncApp
 
 from application.case_channel_service import CaseChannelService
 from application.case_service import CaseService
-from config.branch_mapping import get_branch_for_user, is_superuser
+from config.branch_mapping import get_branch_for_user, get_team_for_user, is_superuser
 from config.settings import get_settings
 from domain.case import CaseStatus, InvalidCaseTransition
 from infrastructure.case_repository import CaseRepository
 from infrastructure.salesforce_client import SalesforceClient
 from infrastructure.slack_client import SlackClient
 from views.case_detail_modal import CALLBACK_ID, build_case_detail_modal
-from views.home import build_home_view
+from views.home import build_home_view, format_status_label
 
 settings = get_settings()
 
@@ -51,9 +51,14 @@ async def _publish_home(client, user_id: str) -> None:
         cases = await case_service.list_all_cases()
         branch_label = "Todas las sucursales"
     else:
-        branch = get_branch_for_user(user_id)
-        cases = await case_service.list_cases_for_branch(branch) if branch else []
-        branch_label = branch or "Sin sucursal asignada"
+        team = get_team_for_user(user_id)
+        if team:
+            cases = await case_service.list_cases_for_team(team)
+            branch_label = f"Equipo {team}"
+        else:
+            branch = get_branch_for_user(user_id)
+            cases = await case_service.list_cases_for_branch(branch) if branch else []
+            branch_label = branch or "Sin sucursal asignada"
 
     selected_status = _user_status_filter.get(user_id)
     if selected_status is not None:
@@ -124,12 +129,18 @@ async def handle_case_detail_submission(ack, body, client, view):
         await ack(response_action="errors", errors={"action_block": str(exc)})
         return
 
-    if comment:
+    if comment or action:
         case = await case_service.get_case(case_id)
         if case.channel:
-            await slack_client.post_message(
-                case.channel, f"💬 *Comentario agregado por <@{user_id}>:*\n{comment}"
-            )
+            if action:
+                status_label = format_status_label(case.status)
+                await slack_client.post_message(
+                    case.channel, f"🔄 *Estado actualizado a:* {status_label}\n_por <@{user_id}>_"
+                )
+            if comment:
+                await slack_client.post_message(
+                    case.channel, f"💬 *Comentario agregado por <@{user_id}>:*\n{comment}"
+                )
 
     await ack()
     await _publish_home(client, user_id)

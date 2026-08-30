@@ -21,6 +21,10 @@ class CaseService:
         """Casos visibles para un superuser (todas las sucursales)."""
         return await self._repository.list_all_cases()
 
+    async def list_cases_for_team(self, team: str) -> list[Case]:
+        """Casos visibles para alguien que sigue a un equipo interno puntual (todas las sucursales)."""
+        return await self._repository.list_cases_for_team(team)
+
     async def get_case(self, case_id: str) -> Case:
         """Detalle de un caso puntual (para abrir el modal)."""
         return await self._repository.get_case(case_id)

@@ -18,7 +18,12 @@ SLACK_USER_TO_BRANCH: dict[str, str] = {
 # Usuarios que ven TODOS los casos de la demo, sin filtrar por sucursal.
 SUPERUSER_SLACK_IDS: set[str] = {
     # "U0123ABCDEF",
-    "U081F514Z5H",
+}
+
+# Usuarios que ven los casos derivados a un equipo interno puntual
+# (Legales, Logistica, Marketing, Cobros), sin importar la sucursal.
+SLACK_USER_TO_TEAM: dict[str, str] = {
+    # "U0789MNBVC": "Cobros",
 }
 
 
@@ -30,3 +35,8 @@ def get_branch_for_user(slack_user_id: str) -> str | None:
 def is_superuser(slack_user_id: str) -> bool:
     """True si el usuario debe ver todos los casos, sin filtrar por sucursal."""
     return slack_user_id in SUPERUSER_SLACK_IDS
+
+
+def get_team_for_user(slack_user_id: str) -> str | None:
+    """Devuelve el equipo interno que sigue este usuario (todas las sucursales), o None si no aplica."""
+    return SLACK_USER_TO_TEAM.get(slack_user_id)

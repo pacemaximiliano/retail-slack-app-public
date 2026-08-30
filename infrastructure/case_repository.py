@@ -109,6 +109,16 @@ class CaseRepository:
         result = await self._client.query(soql)
         return [self._to_domain(record) for record in result["records"]]
 
+    async def list_cases_for_team(self, team: str) -> list[Case]:
+        """Trae los casos derivados a un equipo interno puntual, de cualquier sucursal."""
+        soql = (
+            f"SELECT {_QUERY_FIELDS} FROM Case "
+            f"WHERE Internal_Team__c = '{_escape_soql_string(team)}' AND Branch__c != null "
+            f"ORDER BY CreatedDate DESC"
+        )
+        result = await self._client.query(soql)
+        return [self._to_domain(record) for record in result["records"]]
+
     async def save(self, case: Case) -> None:
         """
         Persiste el estado actual del Case en Salesforce.
