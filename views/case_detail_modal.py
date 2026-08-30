@@ -46,6 +46,7 @@ _ACTIONS_BY_STATUS: dict[CaseStatus, list[tuple[str, str]]] = {
 def build_case_detail_modal(case: Case) -> dict:
     """Arma el payload de `views.open` / `views.update` para el detalle de un caso."""
     team_line = f"\n*Equipo interno:* {case.assigned_team}" if case.assigned_team else ""
+    channel_line = f"\n*Canal:* <#{case.channel}>" if case.channel else "\n*Canal:* _Todavía no se creó_"
     blocks: list[dict] = [
         {
             "type": "section",
@@ -57,6 +58,7 @@ def build_case_detail_modal(case: Case) -> dict:
                     f"*Sucursal:* {case.branch}\n"
                     f"*Estado:* {case.status.value}"
                     f"{team_line}"
+                    f"{channel_line}"
                 ),
             },
         },
@@ -74,7 +76,22 @@ def build_case_detail_modal(case: Case) -> dict:
 
     available_actions = _ACTIONS_BY_STATUS.get(case.status, [])
 
-    if not available_actions:
+    if case.channel:
+        blocks.append(
+            {
+                "type": "input",
+                "block_id": "comment_block",
+                "optional": True,
+                "label": {"type": "plain_text", "text": "Agregar comentario al canal (opcional)"},
+                "element": {
+                    "type": "plain_text_input",
+                    "action_id": "comment_input",
+                    "multiline": True,
+                },
+            }
+        )
+
+    if not available_actions and not case.channel:
         blocks.append(
             {
                 "type": "context",
@@ -86,7 +103,8 @@ def build_case_detail_modal(case: Case) -> dict:
                 ],
             }
         )
-    else:
+
+    if available_actions:
         blocks.append(
             {
                 "type": "input",
@@ -133,7 +151,7 @@ def build_case_detail_modal(case: Case) -> dict:
         "blocks": blocks,
     }
 
-    if available_actions:
+    if available_actions or case.channel:
         view["submit"] = {"type": "plain_text", "text": "Confirmar"}
 
     return view
