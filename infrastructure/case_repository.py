@@ -148,3 +148,10 @@ class CaseRepository:
         )
         result = await self._client.query(soql)
         return [record["CommentBody"] for record in result["records"] if record.get("CommentBody")]
+
+    async def add_comment(self, case_id: str, comment_body: str) -> None:
+        """Crea un CaseComment nuevo en Salesforce, asociado a este caso."""
+        await self._client.create_sobject(
+            "CaseComment",
+            {"ParentId": case_id, "CommentBody": comment_body, "IsPublished": True},
+        )

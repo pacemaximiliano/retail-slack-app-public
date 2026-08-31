@@ -131,13 +131,15 @@ async def handle_case_detail_submission(ack, body, client, view):
 
     if comment or action:
         case = await case_service.get_case(case_id)
-        if case.channel:
-            if action:
-                status_label = format_status_label(case.status)
+        if action:
+            status_label = format_status_label(case.status)
+            if case.channel:
                 await slack_client.post_message(
                     case.channel, f"🔄 *Estado actualizado a:* {status_label}\n_por <@{user_id}>_"
                 )
-            if comment:
+        if comment:
+            await case_service.add_comment(case_id, f"(Comentario agregado desde Slack)\n{comment}")
+            if case.channel:
                 await slack_client.post_message(
                     case.channel, f"💬 *Comentario agregado por <@{user_id}>:*\n{comment}"
                 )

@@ -82,8 +82,9 @@ class Case(BaseModel):
         self.assigned_team = None
 
     def start_progress(self) -> None:
-        """La sucursal empieza a trabajar el caso."""
+        """La sucursal empieza a trabajar el caso (o lo retoma después de una derivación interna)."""
         self._transition_to(CaseStatus.IN_PROGRESS)
+        self.assigned_team = None
 
     def derive_to_internal_team(self, team: str) -> None:
         """La sucursal deriva el caso a un equipo interno."""

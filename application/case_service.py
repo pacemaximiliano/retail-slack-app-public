@@ -56,3 +56,7 @@ class CaseService:
         case.close()
         await self._repository.save(case)
         return case
+
+    async def add_comment(self, case_id: str, comment_body: str) -> None:
+        """Agrega un comentario al caso en Salesforce (CaseComment)."""
+        await self._repository.add_comment(case_id, comment_body)
