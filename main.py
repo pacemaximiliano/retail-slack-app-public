@@ -81,6 +81,12 @@ async def handle_filter_status(ack, body, client):
     await _publish_home(client, user_id)
 
 
+@slack_app.action("refresh_home")
+async def handle_refresh_home(ack, body, client):
+    await ack()
+    await _publish_home(client, body["user"]["id"])
+
+
 @slack_app.action("view_case_detail")
 async def handle_view_case_detail(ack, body, client):
     await ack()

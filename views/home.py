@@ -30,7 +30,11 @@ def build_home_view(branch: str, cases: list[Case], selected_status: CaseStatus 
             "type": "header",
             "text": {"type": "plain_text", "text": f"📋 Casos — {branch}", "emoji": True},
         },
-        {"type": "actions", "block_id": "filter_block", "elements": [_build_filter_select(selected_status)]},
+        {
+            "type": "actions",
+            "block_id": "filter_block",
+            "elements": [_build_filter_select(selected_status), _build_refresh_button()],
+        },
         {"type": "divider"},
     ]
 
@@ -94,3 +98,12 @@ def _build_filter_select(selected_status: CaseStatus | None) -> dict:
 def format_status_label(status: CaseStatus) -> str:
     """Label de presentación (con emoji) para un estado — reutilizable fuera de este módulo."""
     return _STATUS_LABELS.get(status, status.value)
+
+
+def _build_refresh_button() -> dict:
+    """Botón para volver a consultar Salesforce y republicar el Home al toque."""
+    return {
+        "type": "button",
+        "action_id": "refresh_home",
+        "text": {"type": "plain_text", "text": "🔄 Actualizar", "emoji": True},
+    }
