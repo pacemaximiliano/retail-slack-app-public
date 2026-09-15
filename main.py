@@ -173,18 +173,20 @@ async def health():
 async def salesforce_webhook(payload: dict, x_webhook_secret: str = Header(default=None)):
     """
     Recibe el aviso del Flow de Salesforce cuando un caso pasa a
-    'Assigned to Branch', y dispara la creación del canal.
+    'Assigned to Branch'. El canal ya lo creó Salesforce (Create a
+    Salesforce Channel in Slack) — acá solo posteamos el contexto inicial.
 
-    Payload esperado: {"case_id": "500Hu00002XhkrQIAR"}
+    Payload esperado: {"case_id": "500Hu00002XhkrQIAR", "channel_id": "C0123ABCDEF"}
     """
     if x_webhook_secret != settings.webhook_secret:
         raise HTTPException(status_code=401, detail="Webhook secret inválido")
 
     case_id = payload.get("case_id")
-    if not case_id:
-        raise HTTPException(status_code=400, detail="Falta 'case_id' en el payload")
+    channel_id = payload.get("channel_id")
+    if not case_id or not channel_id:
+        raise HTTPException(status_code=400, detail="Falta 'case_id' o 'channel_id' en el payload")
 
-    await case_channel_service.create_channel_for_case(case_id)
+    await case_channel_service.post_initial_message(case_id, channel_id)
     return {"status": "ok"}
 
 

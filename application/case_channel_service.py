@@ -1,10 +1,11 @@
 """
-Caso de uso: crear el canal de Slack asociado a un caso.
+Caso de uso: postear el contexto inicial de un caso en su canal de Slack.
 
-Orquesta CaseRepository (Salesforce) y SlackClient (Slack) — es el único
-lugar de la app que conoce a los dos al mismo tiempo. Se dispara desde
-el webhook que recibe el aviso de Salesforce cuando un caso pasa a
-"Assigned to Branch" (ver main.py).
+El canal en sí ya lo crea Salesforce (vía la action nativa "Create a
+Salesforce Channel in Slack" en el Flow), que también guarda su Id en
+Slack_Channel__c. Este servicio solo agrega el mensaje de contexto
+(Description + comentarios existentes) — se dispara desde el webhook
+que recibe el aviso de Salesforce (ver main.py).
 """
 
 from domain.case import Case
@@ -17,29 +18,16 @@ class CaseChannelService:
         self._repository = repository
         self._slack_client = slack_client
 
-    async def create_channel_for_case(self, case_id: str) -> Case:
+    async def post_initial_message(self, case_id: str, channel_id: str) -> Case:
         """
-        Crea el canal de Slack para un caso (si todavía no tiene uno),
-        postea la Description + comentarios existentes como mensaje
-        inicial, y guarda el Id del canal en Salesforce.
-
-        Es idempotente: si el caso ya tiene un `channel` asignado, no
-        hace nada y lo devuelve tal cual — así un reintento del webhook
-        de Salesforce no genera canales ni mensajes duplicados.
+        Postea la Description + comentarios existentes de un caso en el
+        canal que Salesforce ya creó. No valida si ya se posteó antes —
+        si el Flow se dispara de nuevo para una re-derivación real, es
+        correcto que se postee un mensaje de contexto nuevo.
         """
         case = await self._repository.get_case(case_id)
-
-        if case.channel:
-            return case
-
-        channel_name = f"caso-{case.case_number}"
-        channel_id = await self._slack_client.create_channel(channel_name)
-
         comments = await self._repository.list_case_comments(case_id)
         await self._slack_client.post_message(channel_id, self._build_initial_message(case, comments))
-
-        case.channel = channel_id
-        await self._repository.save(case)
         return case
 
     @staticmethod
