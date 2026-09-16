@@ -176,15 +176,18 @@ async def salesforce_webhook(payload: dict, x_webhook_secret: str = Header(defau
     'Assigned to Branch'. El canal ya lo creó Salesforce (Create a
     Salesforce Channel in Slack) — acá solo posteamos el contexto inicial.
 
-    Payload esperado: {"case_id": "500Hu00002XhkrQIAR", "channel_id": "C0123ABCDEF"}
+    Payload esperado: {"caseId": "500Hu00002XhkrQIAR", "channelId": "C0123ABCDEF"}
+    (camelCase a propósito: nombres con guion bajo generan un bug de
+    Salesforce al armar la clase Apex del External Service — ver
+    infrastructure/case_repository.py si hace falta más contexto).
     """
     if x_webhook_secret != settings.webhook_secret:
         raise HTTPException(status_code=401, detail="Webhook secret inválido")
 
-    case_id = payload.get("case_id")
-    channel_id = payload.get("channel_id")
+    case_id = payload.get("caseId")
+    channel_id = payload.get("channelId")
     if not case_id or not channel_id:
-        raise HTTPException(status_code=400, detail="Falta 'case_id' o 'channel_id' en el payload")
+        raise HTTPException(status_code=400, detail="Falta 'caseId' o 'channelId' en el payload")
 
     await case_channel_service.post_initial_message(case_id, channel_id)
     return {"status": "ok"}
