@@ -174,12 +174,12 @@ async def salesforce_webhook(payload: dict, x_webhook_secret: str = Header(defau
     """
     Recibe el aviso del Flow de Salesforce cuando un caso pasa a
     'Assigned to Branch'. El canal ya lo creó Salesforce (Create a
-    Salesforce Channel in Slack) — acá solo posteamos el contexto inicial.
+    Salesforce Channel in Slack, configurado como público) — acá solo
+    posteamos el contexto inicial.
 
     Payload esperado: {"caseId": "500Hu00002XhkrQIAR", "channelId": "C0123ABCDEF"}
     (camelCase a propósito: nombres con guion bajo generan un bug de
-    Salesforce al armar la clase Apex del External Service — ver
-    infrastructure/case_repository.py si hace falta más contexto).
+    Salesforce al armar la clase Apex del External Service).
     """
     if x_webhook_secret != settings.webhook_secret:
         raise HTTPException(status_code=401, detail="Webhook secret inválido")

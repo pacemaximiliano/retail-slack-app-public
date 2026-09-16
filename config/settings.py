@@ -18,12 +18,8 @@ class SlackSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_prefix="SLACK_", env_file=".env", extra="ignore")
 
-    bot_token: str = Field(..., description="xoxb-... token del bot, con permisos de chat:write, channels:manage, etc.")
+    bot_token: str = Field(..., description="xoxb-... token del bot, con permisos de chat:write, chat:write.public, etc.")
     signing_secret: str = Field(..., description="Signing Secret de la app, usado para verificar requests entrantes de Slack.")
-    admin_user_token: str = Field(
-        ...,
-        description="xoxp-... User Token de un Org Owner/Admin, con scope admin.conversations:write. Las APIs admin.* de Slack no aceptan Bot Tokens.",
-    )
 
 
 class SalesforceSettings(BaseSettings):
