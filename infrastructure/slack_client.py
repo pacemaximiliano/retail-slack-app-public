@@ -14,6 +14,31 @@ from config.settings import SlackSettings
 class SlackClient:
     def __init__(self, settings: SlackSettings):
         self._client = AsyncWebClient(token=settings.bot_token)
+        self._bot_user_id: str | None = None
+
+    async def _get_bot_user_id(self) -> str:
+        """Resuelve (y cachea) el Id de usuario del propio bot."""
+        if self._bot_user_id is None:
+            response = await self._client.auth_test()
+            self._bot_user_id = response["user_id"]
+        return self._bot_user_id
+
+    async def ensure_bot_in_channel(self, channel_id: str) -> None:
+        """
+        Se invita a sí mismo (el bot) a un canal, vía la API de administrador
+        de Enterprise Grid (admin.conversations.invite) — hace falta porque
+        los Salesforce Channels no agregan al bot como miembro por defecto,
+        y Slack no deja que un bot se sume solo a un canal privado sin
+        haber sido invitado. Requiere el scope admin.conversations:write
+        aprobado a nivel organización.
+        """
+        bot_user_id = await self._get_bot_user_id()
+        try:
+            await self._client.admin_conversations_invite(channel_id=channel_id, user_ids=[bot_user_id])
+        except SlackApiError as exc:
+            # Si ya es miembro (ej. un reintento), no es un error real.
+            if exc.response.get("error") != "already_in_channel":
+                raise
 
     async def create_channel(self, name: str) -> str:
         """

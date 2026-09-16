@@ -25,6 +25,7 @@ class CaseChannelService:
         si el Flow se dispara de nuevo para una re-derivación real, es
         correcto que se postee un mensaje de contexto nuevo.
         """
+        await self._slack_client.ensure_bot_in_channel(channel_id)
         case = await self._repository.get_case(case_id)
         comments = await self._repository.list_case_comments(case_id)
         await self._slack_client.post_message(channel_id, self._build_initial_message(case, comments))
