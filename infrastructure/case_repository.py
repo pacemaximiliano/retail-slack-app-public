@@ -90,10 +90,15 @@ class CaseRepository:
         return self._to_domain(record)
 
     async def list_cases_for_branch(self, branch: str) -> list[Case]:
-        """Trae todos los casos de una sucursal puntual (lo que ve el usuario en el App Home)."""
+        """
+        Trae los casos de una sucursal puntual (lo que ve el usuario en el
+        App Home) — excluye los que siguen en "New", porque Call Center
+        todavía no los derivó a nadie.
+        """
         soql = (
             f"SELECT {_QUERY_FIELDS} FROM Case "
             f"WHERE Branch__c = '{_escape_soql_string(branch)}' "
+            f"AND Status != '{_STATUS_TO_SALESFORCE[CaseStatus.NEW]}' "
             f"ORDER BY CreatedDate DESC"
         )
         result = await self._client.query(soql)
@@ -103,9 +108,14 @@ class CaseRepository:
         """
         Trae todos los casos de la demo (de cualquier sucursal) — para el
         superuser. Sigue filtrando por Branch__c != null para no traer
-        casos de otras demos ajenas a este proyecto.
+        casos de otras demos ajenas a este proyecto, y excluye los que
+        siguen en "New" por la misma razón que list_cases_for_branch.
         """
-        soql = f"SELECT {_QUERY_FIELDS} FROM Case WHERE Branch__c != null ORDER BY CreatedDate DESC"
+        soql = (
+            f"SELECT {_QUERY_FIELDS} FROM Case "
+            f"WHERE Branch__c != null AND Status != '{_STATUS_TO_SALESFORCE[CaseStatus.NEW]}' "
+            f"ORDER BY CreatedDate DESC"
+        )
         result = await self._client.query(soql)
         return [self._to_domain(record) for record in result["records"]]
 
