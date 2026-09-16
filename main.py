@@ -8,8 +8,13 @@ sola vez al arrancar, y registra los handlers de Slack:
 - app_home_opened: publica el listado de casos de la sucursal del usuario
   (o de todas, si es superuser).
 - view_case_detail (botón): abre el modal de detalle de un caso.
-- case_detail_modal (submit del modal): ejecuta la acción elegida y
-  refresca el App Home.
+- derive_to_internal_team / return_to_call_center / close_case /
+  finish_internal_work (botones dentro del modal): ejecutan su acción
+  directo, sin pasar por un submit.
+- team_select_modal (submit del modal secundario): confirma a qué
+  equipo derivar.
+- case_detail_modal (submit del modal principal): guarda el comentario,
+  si se escribió alguno.
 """
 
 import uvicorn
@@ -25,7 +30,13 @@ from domain.case import CaseStatus, InvalidCaseTransition
 from infrastructure.case_repository import CaseRepository
 from infrastructure.salesforce_client import SalesforceClient
 from infrastructure.slack_client import SlackClient
-from views.case_detail_modal import CALLBACK_ID, build_case_detail_modal
+from views.case_detail_modal import (
+    CALLBACK_ID,
+    TEAM_SELECT_CALLBACK_ID,
+    build_case_detail_modal,
+    build_message_modal,
+    build_team_select_modal,
+)
 from views.home import build_home_view, format_status_label
 
 settings = get_settings()
@@ -67,6 +78,37 @@ async def _publish_home(client, user_id: str) -> None:
     await client.views_publish(user_id=user_id, view=build_home_view(branch_label, cases, selected_status))
 
 
+async def _notify_status_change(case, user_id: str) -> None:
+    """Postea en el canal del caso que su estado cambió, si tiene canal."""
+    if case.channel:
+        status_label = format_status_label(case.status)
+        await slack_client.post_message(
+            case.channel, f"🔄 *Estado actualizado a:* {status_label}\n_por <@{user_id}>_"
+        )
+
+
+async def _run_case_action(ack, body, client, action_coro) -> None:
+    """
+    Helper compartido por los botones de acción del modal (Devolver,
+    Cerrar, Finalizar): ejecuta la transición, notifica al canal, y
+    reemplaza el modal por uno de confirmación (o error).
+    """
+    await ack()
+    user_id = body["user"]["id"]
+    try:
+        case = await action_coro()
+    except InvalidCaseTransition as exc:
+        await client.views_update(view_id=body["view"]["id"], view=build_message_modal(f"❌ {exc}"))
+        return
+
+    await _notify_status_change(case, user_id)
+    await client.views_update(
+        view_id=body["view"]["id"],
+        view=build_message_modal(f"✅ Caso actualizado a *{format_status_label(case.status)}*."),
+    )
+    await _publish_home(client, user_id)
+
+
 @slack_app.event("app_home_opened")
 async def handle_app_home_opened(event, client):
     await _publish_home(client, event["user"])
@@ -95,63 +137,69 @@ async def handle_view_case_detail(ack, body, client):
     await client.views_open(trigger_id=body["trigger_id"], view=build_case_detail_modal(case))
 
 
+@slack_app.action("derive_to_internal_team")
+async def handle_derive_button(ack, body, client):
+    """Abre el modal secundario para elegir el equipo interno, encima del principal."""
+    await ack()
+    case_id = body["view"]["private_metadata"]
+    await client.views_push(trigger_id=body["trigger_id"], view=build_team_select_modal(case_id))
+
+
+@slack_app.action("return_to_call_center")
+async def handle_return_to_call_center(ack, body, client):
+    case_id = body["view"]["private_metadata"]
+    await _run_case_action(ack, body, client, lambda: case_service.return_to_call_center(case_id))
+
+
+@slack_app.action("close_case")
+async def handle_close_case(ack, body, client):
+    case_id = body["view"]["private_metadata"]
+    await _run_case_action(ack, body, client, lambda: case_service.close_case(case_id))
+
+
+@slack_app.action("finish_internal_work")
+async def handle_finish_internal_work(ack, body, client):
+    case_id = body["view"]["private_metadata"]
+    await _run_case_action(ack, body, client, lambda: case_service.finish_internal_work(case_id))
+
+
+@slack_app.view(TEAM_SELECT_CALLBACK_ID)
+async def handle_team_select_submission(ack, body, client, view):
+    case_id = view["private_metadata"]
+    user_id = body["user"]["id"]
+    team = view["state"]["values"]["team_block"]["selected_team"]["selected_option"]["value"]
+
+    try:
+        case = await case_service.derive_to_internal_team(case_id, team)
+    except InvalidCaseTransition as exc:
+        await ack(response_action="errors", errors={"team_block": str(exc)})
+        return
+
+    await _notify_status_change(case, user_id)
+    await ack(response_action="clear")  # cierra el modal secundario Y el principal
+    await _publish_home(client, user_id)
+
+
 @slack_app.view(CALLBACK_ID)
 async def handle_case_detail_submission(ack, body, client, view):
+    """Solo guarda el comentario — las acciones de estado van por los botones, no por acá."""
     values = view["state"]["values"]
     case_id = view["private_metadata"]
     user_id = body["user"]["id"]
-
-    action = None
-    if "action_block" in values:
-        selected = values["action_block"]["selected_action"].get("selected_option")
-        action = selected["value"] if selected else None
-
-    team = None
-    if "team_block" in values:
-        selected_team = values["team_block"]["selected_team"].get("selected_option")
-        team = selected_team["value"] if selected_team else None
 
     comment = None
     if "comment_block" in values:
         comment = values["comment_block"]["comment_input"].get("value")
 
-    if action == "derive_to_internal_team" and not team:
-        await ack(
-            response_action="errors",
-            errors={"team_block": "Elegí un equipo interno para derivar el caso."},
-        )
-        return
-
-    try:
-        if action == "start_progress":
-            await case_service.start_progress(case_id)
-        elif action == "derive_to_internal_team":
-            await case_service.derive_to_internal_team(case_id, team)
-        elif action == "return_to_call_center":
-            await case_service.return_to_call_center(case_id)
-        elif action == "close_case":
-            await case_service.close_case(case_id)
-    except InvalidCaseTransition as exc:
-        await ack(response_action="errors", errors={"action_block": str(exc)})
-        return
-
-    if comment or action:
-        case = await case_service.get_case(case_id)
-        if action:
-            status_label = format_status_label(case.status)
-            if case.channel:
-                await slack_client.post_message(
-                    case.channel, f"🔄 *Estado actualizado a:* {status_label}\n_por <@{user_id}>_"
-                )
-        if comment:
-            await case_service.add_comment(case_id, f"(Comentario agregado desde Slack)\n{comment}")
-            if case.channel:
-                await slack_client.post_message(
-                    case.channel, f"💬 *Comentario agregado por <@{user_id}>:*\n{comment}"
-                )
-
     await ack()
-    await _publish_home(client, user_id)
+
+    if comment:
+        await case_service.add_comment(case_id, f"(Comentario agregado desde Slack)\n{comment}")
+        case = await case_service.get_case(case_id)
+        if case.channel:
+            await slack_client.post_message(
+                case.channel, f"💬 *Comentario agregado por <@{user_id}>:*\n{comment}"
+            )
 
 
 api = FastAPI()
