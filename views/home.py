@@ -23,8 +23,9 @@ _STATUS_LABELS: dict[CaseStatus, str] = {
 }
 
 
-def build_home_view(branch: str, cases: list[Case], selected_status: CaseStatus | None = None) -> dict:
+def build_home_view(branch: str, cases: list[Case], selected_statuses: set[CaseStatus] | None = None) -> dict:
     """Arma el payload de `views.publish` para el App Home de una sucursal."""
+    selected_statuses = selected_statuses or set()
     blocks: list[dict] = [
         {
             "type": "header",
@@ -33,7 +34,7 @@ def build_home_view(branch: str, cases: list[Case], selected_status: CaseStatus 
         {
             "type": "actions",
             "block_id": "filter_block",
-            "elements": _build_filter_buttons(selected_status),
+            "elements": _build_filter_buttons(selected_statuses),
         },
         {
             "type": "actions",
@@ -78,10 +79,13 @@ def build_home_view(branch: str, cases: list[Case], selected_status: CaseStatus 
     return {"type": "home", "blocks": blocks}
 
 
-def _build_filter_buttons(selected_status: CaseStatus | None) -> list[dict]:
+def _build_filter_buttons(selected_statuses: set[CaseStatus]) -> list[dict]:
     """
     Arma la fila de botones de filtro por estado — uno por estado + "Todos".
-    El que está activo queda resaltado (style="primary"), los demás neutros.
+    Ahora soporta selección MÚLTIPLE: cada botón de estado togglea su
+    propio estado dentro/fuera del conjunto seleccionado (no reemplaza a
+    los demás). "Todos los estados" limpia la selección completa.
+    Los botones activos quedan resaltados (style="primary").
 
     Cada botón necesita un action_id ÚNICO dentro del view (Slack no permite
     repetirlo, ni diferenciando por "value") — por eso va con el valor del
@@ -91,17 +95,18 @@ def _build_filter_buttons(selected_status: CaseStatus | None) -> list[dict]:
     for status in CaseStatus:
         options.append((status.value, _STATUS_LABELS[status]))
 
-    selected_value = selected_status.value if selected_status is not None else "all"
+    selected_values = {status.value for status in selected_statuses}
 
     buttons = []
     for value, label in options:
+        is_active = (value == "all" and not selected_values) or (value in selected_values)
         button: dict = {
             "type": "button",
             "action_id": f"filter_status_{value}",
             "text": {"type": "plain_text", "text": label, "emoji": True},
             "value": value,
         }
-        if value == selected_value:
+        if is_active:
             button["style"] = "primary"
         buttons.append(button)
     return buttons

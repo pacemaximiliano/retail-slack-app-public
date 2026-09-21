@@ -55,7 +55,7 @@ case_channel_service = CaseChannelService(case_repository, slack_client)
 
 # Filtro de estado por usuario, solo en memoria — se resetea si el
 # proceso reinicia. Alcanza para la demo, no hace falta una DB para esto.
-_user_status_filter: dict[str, CaseStatus | None] = {}
+_user_status_filter: dict[str, set[CaseStatus]] = {}
 
 
 async def _publish_home(client, user_id: str) -> None:
@@ -73,11 +73,11 @@ async def _publish_home(client, user_id: str) -> None:
             cases = await case_service.list_cases_for_branch(branch) if branch else []
             branch_label = branch or "Sin sucursal asignada"
 
-    selected_status = _user_status_filter.get(user_id)
-    if selected_status is not None:
-        cases = [case for case in cases if case.status == selected_status]
+    selected_statuses = _user_status_filter.get(user_id, set())
+    if selected_statuses:
+        cases = [case for case in cases if case.status in selected_statuses]
 
-    await client.views_publish(user_id=user_id, view=build_home_view(branch_label, cases, selected_status))
+    await client.views_publish(user_id=user_id, view=build_home_view(branch_label, cases, selected_statuses))
 
 
 async def _notify_status_change(case, user_id: str) -> None:
@@ -121,7 +121,17 @@ async def handle_filter_status_button(ack, body, client):
     await ack()
     user_id = body["user"]["id"]
     selected_value = body["actions"][0]["value"]
-    _user_status_filter[user_id] = None if selected_value == "all" else CaseStatus(selected_value)
+    current = _user_status_filter.setdefault(user_id, set())
+
+    if selected_value == "all":
+        current.clear()
+    else:
+        status = CaseStatus(selected_value)
+        if status in current:
+            current.remove(status)
+        else:
+            current.add(status)
+
     await _publish_home(client, user_id)
 
 
