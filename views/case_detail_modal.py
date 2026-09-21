@@ -1,20 +1,21 @@
 """
 Constructores de Block Kit para el detalle de un caso.
 
-Dos vistas:
-- build_case_detail_modal: el modal principal, con la info del caso,
-  el campo de comentario, y botones de acción independientes (no radio
-  buttons) — cada botón dispara su acción al toque de un clic.
-- build_team_select_modal: modal secundario, se abre encima del
-  principal (views.push) cuando se clickea "Derivar a equipo interno",
-  para elegir a qué equipo.
-- build_message_modal: modal chico de confirmación/error, se usa para
-  reemplazar al principal después de ejecutar una acción.
+El modal principal (build_case_detail_modal) enruta a distintas
+"pantallas" según el estado del caso — nunca se cierra entre pasos,
+se va reemplazando con views.update:
 
-Las acciones disponibles por estado son una copia deliberada a nivel de
-presentación de las transiciones válidas en domain/case.py — si se
-desincroniza, lo peor que pasa es que domain.Case rechace la acción al
-guardar (ver application/case_service.py).
+- Assigned to Branch → pantalla de "Iniciar" (un solo botón).
+- In Progress → pantalla de elección (Cerrar Caso / Derivar Caso).
+  Clickear cualquiera de las dos abre su propia sub-pantalla con el
+  campo que corresponda (comentario, o comentario + equipo).
+- Escalated Internal / resto de estados → comportamiento previo, sin
+  cambios en esta vuelta (queda para la próxima ronda de ajustes).
+
+Además:
+- build_team_select_modal: modal secundario (views.push) para derivar
+  un caso desde el equipo interno a otro equipo.
+- build_message_modal: modal chico de confirmación/error.
 """
 
 from domain.case import Case, CaseStatus
@@ -26,20 +27,10 @@ TEAM_SELECT_CALLBACK_ID = "team_select_modal"
 # picklist Internal_Team__c de Salesforce).
 _TEAM_OPTIONS = ["Legales", "Logistica", "Marketing", "Cobros"]
 
-# Botones de acción por estado: (action_id, label, style).
-# style: "primary" (verde), "danger" (rojo), o None (gris, default).
+# Botones de acción para los estados que NO cambiaron en esta ronda
+# (equipo interno y estados terminales).
 _ACTION_BUTTONS_BY_STATUS: dict[CaseStatus, list[tuple[str, str, str | None]]] = {
     CaseStatus.NEW: [],
-    CaseStatus.ASSIGNED_TO_BRANCH: [
-        ("derive_to_internal_team", "🔺 Derivar a equipo interno", "primary"),
-        ("return_to_call_center", "↩️ Devolver a Call Center", None),
-        ("close_case", "✅ Cerrar caso", None),
-    ],
-    CaseStatus.IN_PROGRESS: [
-        ("derive_to_internal_team", "🔺 Derivar a equipo interno", "primary"),
-        ("return_to_call_center", "↩️ Devolver a Call Center", None),
-        ("close_case", "✅ Cerrar caso", None),
-    ],
     CaseStatus.ESCALATED_INTERNAL: [
         ("derive_to_internal_team", "🔺 Derivar a equipo interno", None),
         ("finish_internal_work", "↩️ Devolver a Sucursal", "primary"),
@@ -49,8 +40,8 @@ _ACTION_BUTTONS_BY_STATUS: dict[CaseStatus, list[tuple[str, str, str | None]]] =
 }
 
 
-def build_case_detail_modal(case: Case) -> dict:
-    """Arma el payload de `views.open` / `views.update` para el detalle de un caso."""
+def _info_blocks(case: Case) -> list[dict]:
+    """Bloques de info del caso, compartidos por todas las pantallas."""
     team_line = f"\n*Equipo interno:* {case.assigned_team}" if case.assigned_team else ""
     channel_line = f"\n*Canal:* <#{case.channel}>" if case.channel else "\n*Canal:* _Todavía no se creó_"
     blocks: list[dict] = [
@@ -70,15 +61,176 @@ def build_case_detail_modal(case: Case) -> dict:
         },
         {"type": "divider"},
     ]
-
     if case.description:
         blocks.append(
-            {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": f"*Descripción:*\n{case.description}"},
-            }
+            {"type": "section", "text": {"type": "mrkdwn", "text": f"*Descripción:*\n{case.description}"}}
         )
         blocks.append({"type": "divider"})
+    return blocks
+
+
+def _base_view(case_id: str, blocks: list[dict], submit_label: str | None = None) -> dict:
+    view: dict = {
+        "type": "modal",
+        "callback_id": CALLBACK_ID,
+        "private_metadata": case_id,
+        "title": {"type": "plain_text", "text": "Detalle del caso"},
+        "close": {"type": "plain_text", "text": "Cerrar"},
+        "blocks": blocks,
+    }
+    if submit_label:
+        view["submit"] = {"type": "plain_text", "text": submit_label}
+    return view
+
+
+def _error_block(message: str) -> dict:
+    return {"type": "section", "text": {"type": "mrkdwn", "text": f":warning: {message}"}}
+
+
+def build_case_detail_modal(case: Case) -> dict:
+    """Punto de entrada: enruta a la pantalla que corresponde según el estado del caso."""
+    if case.status == CaseStatus.ASSIGNED_TO_BRANCH:
+        return build_start_screen(case)
+    if case.status == CaseStatus.IN_PROGRESS:
+        return build_in_progress_choice_screen(case)
+    return _build_generic_modal(case)
+
+
+def build_start_screen(case: Case) -> dict:
+    """Pantalla 1: caso recién asignado a la sucursal — un solo botón, "Iniciar"."""
+    blocks = _info_blocks(case)
+    blocks.append(
+        {
+            "type": "actions",
+            "block_id": "start_actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "action_id": "start_progress",
+                    "text": {"type": "plain_text", "text": "▶️ Iniciar", "emoji": True},
+                    "style": "primary",
+                }
+            ],
+        }
+    )
+    return _base_view(case.id, blocks)
+
+
+def build_in_progress_choice_screen(case: Case) -> dict:
+    """Pantalla 2: caso en progreso — elegir Cerrar o Derivar."""
+    blocks = _info_blocks(case)
+    blocks.append(
+        {
+            "type": "actions",
+            "block_id": "in_progress_actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "action_id": "show_close_case_form",
+                    "text": {"type": "plain_text", "text": "✅ Cerrar Caso", "emoji": True},
+                },
+                {
+                    "type": "button",
+                    "action_id": "show_derive_case_form",
+                    "text": {"type": "plain_text", "text": "🔺 Derivar Caso", "emoji": True},
+                    "style": "primary",
+                },
+            ],
+        }
+    )
+    return _base_view(case.id, blocks)
+
+
+def build_close_case_form(case: Case, error: str | None = None) -> dict:
+    """Pantalla 3a: cerrar el caso — comentario opcional + confirmar."""
+    blocks = _info_blocks(case)
+    if error:
+        blocks.append(_error_block(error))
+    blocks.append(
+        {
+            "type": "input",
+            "block_id": "close_comment_block",
+            "optional": True,
+            "label": {"type": "plain_text", "text": "Comentario de cierre (opcional)"},
+            "element": {"type": "plain_text_input", "action_id": "close_comment_input", "multiline": True},
+        }
+    )
+    blocks.append(
+        {
+            "type": "actions",
+            "block_id": "close_case_actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "action_id": "confirm_close_case",
+                    "text": {"type": "plain_text", "text": "✅ Confirmar cierre", "emoji": True},
+                    "style": "primary",
+                },
+                {
+                    "type": "button",
+                    "action_id": "back_to_choice",
+                    "text": {"type": "plain_text", "text": "‹ Volver", "emoji": True},
+                },
+            ],
+        }
+    )
+    return _base_view(case.id, blocks)
+
+
+def build_derive_case_form(case: Case, error: str | None = None) -> dict:
+    """Pantalla 3b: derivar a un equipo interno — comentario opcional + equipo (obligatorio) + confirmar."""
+    blocks = _info_blocks(case)
+    if error:
+        blocks.append(_error_block(error))
+    blocks.append(
+        {
+            "type": "input",
+            "block_id": "derive_comment_block",
+            "optional": True,
+            "label": {"type": "plain_text", "text": "Comentario (opcional)"},
+            "element": {"type": "plain_text_input", "action_id": "derive_comment_input", "multiline": True},
+        }
+    )
+    blocks.append(
+        {
+            "type": "input",
+            "block_id": "derive_team_block",
+            "label": {"type": "plain_text", "text": "Equipo interno"},
+            "element": {
+                "type": "static_select",
+                "action_id": "selected_team",
+                "placeholder": {"type": "plain_text", "text": "Buscar equipo..."},
+                "options": [
+                    {"text": {"type": "plain_text", "text": team}, "value": team} for team in _TEAM_OPTIONS
+                ],
+            },
+        }
+    )
+    blocks.append(
+        {
+            "type": "actions",
+            "block_id": "derive_case_actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "action_id": "confirm_derive_case",
+                    "text": {"type": "plain_text", "text": "🔺 Confirmar derivación", "emoji": True},
+                    "style": "primary",
+                },
+                {
+                    "type": "button",
+                    "action_id": "back_to_choice",
+                    "text": {"type": "plain_text", "text": "‹ Volver", "emoji": True},
+                },
+            ],
+        }
+    )
+    return _base_view(case.id, blocks)
+
+
+def _build_generic_modal(case: Case) -> dict:
+    """Comportamiento previo, sin cambios: equipo interno y estados terminales."""
+    blocks = _info_blocks(case)
 
     if case.channel:
         blocks.append(
@@ -87,11 +239,7 @@ def build_case_detail_modal(case: Case) -> dict:
                 "block_id": "comment_block",
                 "optional": True,
                 "label": {"type": "plain_text", "text": "Agregar comentario al canal (opcional)"},
-                "element": {
-                    "type": "plain_text_input",
-                    "action_id": "comment_input",
-                    "multiline": True,
-                },
+                "element": {"type": "plain_text_input", "action_id": "comment_input", "multiline": True},
             }
         )
         blocks.append({"type": "divider"})
@@ -101,8 +249,6 @@ def build_case_detail_modal(case: Case) -> dict:
     if action_buttons:
         elements = []
         for action_id, label, style in action_buttons:
-            # Para el equipo interno, el botón de finalizar menciona el
-            # equipo puntual (Legales/Cobros/Logística).
             if action_id == "finish_internal_work" and case.assigned_team:
                 label = f"↩️ Devolver a Sucursal ({case.assigned_team})"
             button: dict = {
@@ -127,25 +273,12 @@ def build_case_detail_modal(case: Case) -> dict:
             }
         )
 
-    view: dict = {
-        "type": "modal",
-        "callback_id": CALLBACK_ID,
-        "private_metadata": case.id,
-        "title": {"type": "plain_text", "text": "Detalle del caso"},
-        "close": {"type": "plain_text", "text": "Cerrar"},
-        "blocks": blocks,
-    }
-
-    # El submit de este modal sirve UNICAMENTE para guardar el comentario
-    # (las acciones de estado van por los botones de arriba, no por acá).
-    if case.channel:
-        view["submit"] = {"type": "plain_text", "text": "Guardar comentario"}
-
-    return view
+    submit_label = "Guardar comentario" if case.channel else None
+    return _base_view(case.id, blocks, submit_label)
 
 
 def build_team_select_modal(case_id: str) -> dict:
-    """Modal chico para elegir a qué equipo interno derivar un caso."""
+    """Modal chico (views.push) para elegir a qué equipo interno derivar un caso, desde otro equipo."""
     return {
         "type": "modal",
         "callback_id": TEAM_SELECT_CALLBACK_ID,

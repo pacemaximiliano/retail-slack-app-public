@@ -68,7 +68,7 @@ def build_home_view(branch: str, cases: list[Case], selected_statuses: set[CaseS
                     },
                     "accessory": {
                         "type": "button",
-                        "text": {"type": "plain_text", "text": "Ver detalle", "emoji": True},
+                        "text": {"type": "plain_text", "text": "Gestionar", "emoji": True},
                         "action_id": "view_case_detail",
                         "value": case.id,
                     },
