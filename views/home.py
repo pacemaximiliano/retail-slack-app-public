@@ -82,6 +82,10 @@ def _build_filter_buttons(selected_status: CaseStatus | None) -> list[dict]:
     """
     Arma la fila de botones de filtro por estado — uno por estado + "Todos".
     El que está activo queda resaltado (style="primary"), los demás neutros.
+
+    Cada botón necesita un action_id ÚNICO dentro del view (Slack no permite
+    repetirlo, ni diferenciando por "value") — por eso va con el valor del
+    estado incluido en el propio action_id.
     """
     options = [("all", "Todos los estados")]
     for status in CaseStatus:
@@ -93,7 +97,7 @@ def _build_filter_buttons(selected_status: CaseStatus | None) -> list[dict]:
     for value, label in options:
         button: dict = {
             "type": "button",
-            "action_id": "filter_status_button",
+            "action_id": f"filter_status_{value}",
             "text": {"type": "plain_text", "text": label, "emoji": True},
             "value": value,
         }

@@ -17,6 +17,8 @@ sola vez al arrancar, y registra los handlers de Slack:
   si se escribió alguno.
 """
 
+import re
+
 import uvicorn
 from fastapi import FastAPI, Header, HTTPException, Request
 from slack_bolt.adapter.fastapi.async_handler import AsyncSlackRequestHandler
@@ -114,7 +116,7 @@ async def handle_app_home_opened(event, client):
     await _publish_home(client, event["user"])
 
 
-@slack_app.action("filter_status_button")
+@slack_app.action(re.compile(r"^filter_status_"))
 async def handle_filter_status_button(ack, body, client):
     await ack()
     user_id = body["user"]["id"]
