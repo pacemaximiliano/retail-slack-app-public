@@ -114,11 +114,11 @@ async def handle_app_home_opened(event, client):
     await _publish_home(client, event["user"])
 
 
-@slack_app.action("filter_status")
-async def handle_filter_status(ack, body, client):
+@slack_app.action("filter_status_button")
+async def handle_filter_status_button(ack, body, client):
     await ack()
     user_id = body["user"]["id"]
-    selected_value = body["actions"][0]["selected_option"]["value"]
+    selected_value = body["actions"][0]["value"]
     _user_status_filter[user_id] = None if selected_value == "all" else CaseStatus(selected_value)
     await _publish_home(client, user_id)
 

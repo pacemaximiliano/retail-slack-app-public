@@ -33,7 +33,12 @@ def build_home_view(branch: str, cases: list[Case], selected_status: CaseStatus 
         {
             "type": "actions",
             "block_id": "filter_block",
-            "elements": [_build_filter_select(selected_status), _build_refresh_button()],
+            "elements": _build_filter_buttons(selected_status),
+        },
+        {
+            "type": "actions",
+            "block_id": "refresh_block",
+            "elements": [_build_refresh_button()],
         },
         {"type": "divider"},
     ]
@@ -73,26 +78,29 @@ def build_home_view(branch: str, cases: list[Case], selected_status: CaseStatus 
     return {"type": "home", "blocks": blocks}
 
 
-def _build_filter_select(selected_status: CaseStatus | None) -> dict:
-    """Arma el dropdown de filtro por estado, marcando la opción actualmente seleccionada."""
-    options = [{"text": {"type": "plain_text", "text": "Todos los estados"}, "value": "all"}]
+def _build_filter_buttons(selected_status: CaseStatus | None) -> list[dict]:
+    """
+    Arma la fila de botones de filtro por estado — uno por estado + "Todos".
+    El que está activo queda resaltado (style="primary"), los demás neutros.
+    """
+    options = [("all", "Todos los estados")]
     for status in CaseStatus:
-        options.append({"text": {"type": "plain_text", "text": _STATUS_LABELS[status]}, "value": status.value})
+        options.append((status.value, _STATUS_LABELS[status]))
 
-    initial_option = options[0]
-    if selected_status is not None:
-        for option in options:
-            if option["value"] == selected_status.value:
-                initial_option = option
-                break
+    selected_value = selected_status.value if selected_status is not None else "all"
 
-    return {
-        "type": "static_select",
-        "action_id": "filter_status",
-        "placeholder": {"type": "plain_text", "text": "Filtrar por estado"},
-        "options": options,
-        "initial_option": initial_option,
-    }
+    buttons = []
+    for value, label in options:
+        button: dict = {
+            "type": "button",
+            "action_id": "filter_status_button",
+            "text": {"type": "plain_text", "text": label, "emoji": True},
+            "value": value,
+        }
+        if value == selected_value:
+            button["style"] = "primary"
+        buttons.append(button)
+    return buttons
 
 
 def format_status_label(status: CaseStatus) -> str:
