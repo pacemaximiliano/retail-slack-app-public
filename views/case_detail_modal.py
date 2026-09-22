@@ -31,14 +31,17 @@ DERIVE_CASE_CALLBACK_ID = "derive_case_modal"
 # picklist Internal_Team__c de Salesforce).
 _TEAM_OPTIONS = ["Legales", "Logistica", "Marketing", "Cobros"]
 
-# Botones de acción para los estados que NO cambiaron en esta ronda
-# (equipo interno y estados terminales).
+# Botones de acción para el equipo interno y los estados terminales.
+# OJO: el caso de un equipo interno queda en Status "New" (a pedido del
+# cliente — ver domain/case.py), por eso las acciones del equipo interno
+# están acá, no en un estado "escalated". ESCALATED_INTERNAL ya no se usa
+# activamente, queda vacío por compatibilidad con casos viejos.
 _ACTION_BUTTONS_BY_STATUS: dict[CaseStatus, list[tuple[str, str, str | None]]] = {
-    CaseStatus.NEW: [],
-    CaseStatus.ESCALATED_INTERNAL: [
+    CaseStatus.NEW: [
         ("derive_to_internal_team", "🔺 Derivar a equipo interno", None),
         ("finish_internal_work", "↩️ Devolver a Sucursal", "primary"),
     ],
+    CaseStatus.ESCALATED_INTERNAL: [],
     CaseStatus.RETURNED_TO_CALL_CENTER: [],
     CaseStatus.CLOSED: [],
 }

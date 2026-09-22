@@ -16,29 +16,38 @@ from pydantic import BaseModel, Field
 class CaseStatus(str, Enum):
     """Estados posibles de un caso a lo largo de su ciclo de vida."""
 
-    NEW = "new"  # Recién creado por Call Center, sin derivar todavía
+    NEW = "new"  # Recién creado por Call Center SIN derivar todavía —
+    # y, a pedido del cliente, también el estado de un caso que un
+    # equipo interno (Legales/Cobros/etc.) acaba de recibir: para ese
+    # equipo, el caso "arranca de cero" igual que uno genuinamente nuevo.
     ASSIGNED_TO_BRANCH = "assigned_to_branch"  # Derivado a una sucursal
     IN_PROGRESS = "in_progress"  # La sucursal lo está trabajando
-    ESCALATED_INTERNAL = "escalated_internal"  # Derivado a un equipo interno de la sucursal
+    ESCALATED_INTERNAL = "escalated_internal"  # Ya no se usa activamente
+    # (se reemplazó por reusar NEW) — se deja definido para no romper la
+    # lectura de casos viejos que hayan quedado en este estado.
     RETURNED_TO_CALL_CENTER = "returned_to_call_center"  # Devuelto a Call Center
     CLOSED = "closed"  # Resuelto y cerrado
 
 
 # Transiciones permitidas: desde qué estado se puede pasar a cuáles otros.
 _ALLOWED_TRANSITIONS: dict[CaseStatus, set[CaseStatus]] = {
-    CaseStatus.NEW: {CaseStatus.ASSIGNED_TO_BRANCH},
+    CaseStatus.NEW: {
+        CaseStatus.ASSIGNED_TO_BRANCH,  # Vuelve a la sucursal (equipo interno termina)
+        CaseStatus.NEW,  # Un equipo interno deriva a OTRO equipo interno
+    },
     CaseStatus.ASSIGNED_TO_BRANCH: {
         CaseStatus.IN_PROGRESS,
-        CaseStatus.ESCALATED_INTERNAL,
+        CaseStatus.NEW,  # La sucursal deriva a un equipo interno
         CaseStatus.RETURNED_TO_CALL_CENTER,
     },
     CaseStatus.IN_PROGRESS: {
-        CaseStatus.ESCALATED_INTERNAL,
+        CaseStatus.NEW,  # La sucursal deriva a un equipo interno
         CaseStatus.RETURNED_TO_CALL_CENTER,
         CaseStatus.CLOSED,
     },
     CaseStatus.ESCALATED_INTERNAL: {
         CaseStatus.IN_PROGRESS,
+        CaseStatus.ASSIGNED_TO_BRANCH,
         CaseStatus.RETURNED_TO_CALL_CENTER,
         CaseStatus.CLOSED,
     },
@@ -87,9 +96,18 @@ class Case(BaseModel):
         self.assigned_team = None
 
     def derive_to_internal_team(self, team: str) -> None:
-        """La sucursal deriva el caso a un equipo interno."""
-        self._transition_to(CaseStatus.ESCALATED_INTERNAL)
+        """
+        La sucursal (o un equipo interno, derivando a otro) manda el caso
+        a un equipo interno. El caso pasa a "New" — a pedido del cliente,
+        para ese equipo el caso arranca como si fuera nuevo.
+        """
+        self._transition_to(CaseStatus.NEW)
         self.assigned_team = team
+
+    def finish_internal_work(self) -> None:
+        """El equipo interno termina su parte; el caso vuelve a la sucursal."""
+        self._transition_to(CaseStatus.ASSIGNED_TO_BRANCH)
+        self.assigned_team = None
 
     def return_to_call_center(self) -> None:
         """La sucursal devuelve el caso a Call Center."""

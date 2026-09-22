@@ -1,11 +1,12 @@
 """
-Caso de uso: postear el contexto inicial de un caso en su canal de Slack.
+Caso de uso vinculado al webhook de creación de canal.
 
 El canal en sí ya lo crea Salesforce (action nativa "Create a Salesforce
-Channel in Slack"), configurada como pública a nivel organización — por
-eso no hace falta invitar al bot ni usar ninguna API de admin: alcanza
-con el scope chat:write.public para postear directo. Se dispara desde
-el webhook que recibe el aviso de Salesforce (ver main.py).
+Channel in Slack"), y el Asunto/Descripción del caso ya se ven directo
+en el modal "Gestionar" — por eso ya no hace falta postear ningún
+mensaje al crear el canal. Se mantiene este método (y el webhook que lo
+llama en main.py) por si en el futuro hace falta hacer algo en este
+punto del flujo.
 """
 
 from domain.case import Case
@@ -19,26 +20,5 @@ class CaseChannelService:
         self._slack_client = slack_client
 
     async def post_initial_message(self, case_id: str, channel_id: str) -> Case:
-        """
-        Postea la Description + comentarios existentes de un caso en el
-        canal (público) que Salesforce ya creó y vinculó al registro.
-        """
-        case = await self._repository.get_case(case_id)
-        comments = await self._repository.list_case_comments(case_id)
-        await self._slack_client.post_message(channel_id, self._build_initial_message(case, comments))
-        return case
-
-    @staticmethod
-    def _build_initial_message(case: Case, comments: list[str]) -> str:
-        lines = [f"📋 *Caso #{case.case_number} derivado a {case.branch}*", "", case.subject]
-
-        if case.description:
-            lines.append("")
-            lines.append(case.description)
-
-        if comments:
-            lines.append("")
-            lines.append("*Comentarios previos:*")
-            lines.extend(f"• {comment}" for comment in comments)
-
-        return "\n".join(lines)
+        """No postea nada — ver docstring del módulo."""
+        return await self._repository.get_case(case_id)
