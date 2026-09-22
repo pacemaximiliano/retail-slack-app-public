@@ -96,7 +96,7 @@ async def _notify_status_change(case, user_id: str) -> None:
     if case.channel:
         status_label = format_status_label(case.status)
         await slack_client.post_message(
-            case.channel, f"🔄 *Estado actualizado a:* {status_label}\n_por <@{user_id}>_"
+            case.channel, f"🔄 *Estado actualizado a:* {status_label} _por <@{user_id}>_"
         )
 
 

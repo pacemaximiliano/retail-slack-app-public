@@ -30,15 +30,15 @@ class CaseChannelService:
 
     @staticmethod
     def _build_initial_message(case: Case, comments: list[str]) -> str:
-        description = case.description or "_Sin descripción_"
-        if comments:
-            comments_text = "\n".join(f"• {comment}" for comment in comments)
-        else:
-            comments_text = "_Sin comentarios previos_"
+        lines = [f"📋 *Caso #{case.case_number} derivado a {case.branch}*", "", case.subject]
 
-        return (
-            f"📋 *Caso #{case.case_number} derivado a {case.branch}*\n\n"
-            f"*Asunto:* {case.subject}\n\n"
-            f"*Descripción:*\n{description}\n\n"
-            f"*Comentarios previos:*\n{comments_text}"
-        )
+        if case.description:
+            lines.append("")
+            lines.append(case.description)
+
+        if comments:
+            lines.append("")
+            lines.append("*Comentarios previos:*")
+            lines.extend(f"• {comment}" for comment in comments)
+
+        return "\n".join(lines)
