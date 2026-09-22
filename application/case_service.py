@@ -43,6 +43,13 @@ class CaseService:
         await self._repository.save(case)
         return case
 
+    async def finish_internal_work(self, case_id: str) -> Case:
+        """El equipo interno termina su parte; el caso vuelve a la sucursal."""
+        case = await self._repository.get_case(case_id)
+        case.finish_internal_work()
+        await self._repository.save(case)
+        return case
+
     async def return_to_call_center(self, case_id: str) -> Case:
         """La sucursal devuelve el caso a Call Center."""
         case = await self._repository.get_case(case_id)
