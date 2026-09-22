@@ -256,8 +256,6 @@ def _build_generic_modal(case: Case) -> dict:
     if action_buttons:
         elements = []
         for action_id, label, style in action_buttons:
-            if action_id == "finish_internal_work" and case.assigned_team:
-                label = f"↩️ Devolver a Sucursal ({case.assigned_team})"
             button: dict = {
                 "type": "button",
                 "action_id": action_id,
