@@ -10,9 +10,11 @@ sola vez al arrancar, y registra los handlers de Slack:
 - view_case_detail (botón "Gestionar" del Home): abre el modal, en la
   pantalla que corresponda según el estado del caso.
 - start_progress / show_close_case_form / show_derive_case_form /
-  back_to_choice / confirm_close_case / confirm_derive_case: navegan
-  entre las pantallas del modal (Assigned to Branch -> In Progress ->
-  Cerrar/Derivar), todo con views.update, sin cerrar nunca el modal.
+  back_to_choice: navegan entre las pantallas del modal (Assigned to
+  Branch -> In Progress -> elegir), con views.update, sin cerrar nunca
+  el modal.
+- close_case_modal / derive_case_modal (submit de las pantallas con
+  campos): ejecutan el cierre o la derivación.
 - derive_to_internal_team / finish_internal_work: acciones del modal de
   equipo interno (sin cambios en esta ronda).
 - team_select_modal (submit del modal secundario): confirma a qué
@@ -38,6 +40,8 @@ from infrastructure.salesforce_client import SalesforceClient
 from infrastructure.slack_client import SlackClient
 from views.case_detail_modal import (
     CALLBACK_ID,
+    CLOSE_CASE_CALLBACK_ID,
+    DERIVE_CASE_CALLBACK_ID,
     TEAM_SELECT_CALLBACK_ID,
     build_case_detail_modal,
     build_close_case_form,
@@ -207,56 +211,48 @@ async def handle_back_to_choice(ack, body, client):
     await client.views_update(view_id=body["view"]["id"], view=build_in_progress_choice_screen(case))
 
 
-@slack_app.action("confirm_close_case")
-async def handle_confirm_close_case(ack, body, client):
-    await ack()
-    case_id = body["view"]["private_metadata"]
+@slack_app.view(CLOSE_CASE_CALLBACK_ID)
+async def handle_close_case_submission(ack, body, client, view):
+    """Submit real del modal — Slack exige uno porque esta pantalla tiene un bloque `input`."""
+    case_id = view["private_metadata"]
     user_id = body["user"]["id"]
-    values = body["view"]["state"]["values"]
+    values = view["state"]["values"]
     comment = values.get("close_comment_block", {}).get("close_comment_input", {}).get("value")
 
     try:
         case = await case_service.close_case(case_id)
     except InvalidCaseTransition as exc:
-        await client.views_update(view_id=body["view"]["id"], view=build_message_modal(f"❌ {exc}"))
+        await ack(response_action="update", view=build_message_modal(f"❌ {exc}"))
         return
 
+    await ack(response_action="update", view=build_message_modal("✅ Caso cerrado."))
     await _post_comment_if_any(case_id, case, comment, user_id)
     await _notify_status_change(case, user_id)
-    await client.views_update(view_id=body["view"]["id"], view=build_message_modal("✅ Caso cerrado."))
     await _publish_home(client, user_id)
 
 
-@slack_app.action("confirm_derive_case")
-async def handle_confirm_derive_case(ack, body, client):
-    await ack()
-    case_id = body["view"]["private_metadata"]
+@slack_app.view(DERIVE_CASE_CALLBACK_ID)
+async def handle_derive_case_submission(ack, body, client, view):
+    """
+    Submit real del modal — el campo de equipo NO es opcional, así que
+    Slack lo valida solo (error nativo en rojo) sin que tengamos que
+    programarlo a mano.
+    """
+    case_id = view["private_metadata"]
     user_id = body["user"]["id"]
-    values = body["view"]["state"]["values"]
+    values = view["state"]["values"]
     comment = values.get("derive_comment_block", {}).get("derive_comment_input", {}).get("value")
-    team_option = values.get("derive_team_block", {}).get("selected_team", {}).get("selected_option")
-
-    if not team_option:
-        case = await case_service.get_case(case_id)
-        await client.views_update(
-            view_id=body["view"]["id"],
-            view=build_derive_case_form(case, error="Elegí un equipo antes de confirmar."),
-        )
-        return
-
-    team = team_option["value"]
+    team = values["derive_team_block"]["selected_team"]["selected_option"]["value"]
 
     try:
         case = await case_service.derive_to_internal_team(case_id, team)
     except InvalidCaseTransition as exc:
-        await client.views_update(view_id=body["view"]["id"], view=build_message_modal(f"❌ {exc}"))
+        await ack(response_action="update", view=build_message_modal(f"❌ {exc}"))
         return
 
+    await ack(response_action="update", view=build_message_modal(f"✅ Caso derivado a *{team}*."))
     await _post_comment_if_any(case_id, case, comment, user_id)
     await _notify_status_change(case, user_id)
-    await client.views_update(
-        view_id=body["view"]["id"], view=build_message_modal(f"✅ Caso derivado a *{team}*.")
-    )
     await _publish_home(client, user_id)
 
 

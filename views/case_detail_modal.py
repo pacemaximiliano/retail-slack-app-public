@@ -5,10 +5,12 @@ El modal principal (build_case_detail_modal) enruta a distintas
 "pantallas" según el estado del caso — nunca se cierra entre pasos,
 se va reemplazando con views.update:
 
-- Assigned to Branch → pantalla de "Iniciar" (un solo botón).
-- In Progress → pantalla de elección (Cerrar Caso / Derivar Caso).
-  Clickear cualquiera de las dos abre su propia sub-pantalla con el
-  campo que corresponda (comentario, o comentario + equipo).
+- Assigned to Branch → pantalla de "Iniciar" (un solo botón, sin campos).
+- In Progress → pantalla de elección (Cerrar Caso / Derivar Caso, sin
+  campos). Clickear cualquiera de las dos abre su propia sub-pantalla
+  CON campos — y como Slack exige que todo modal con bloques `input`
+  tenga un `submit`, esas dos sub-pantallas usan el submit real del
+  modal (con su propio callback_id) en vez de un botón suelto.
 - Escalated Internal / resto de estados → comportamiento previo, sin
   cambios en esta vuelta (queda para la próxima ronda de ajustes).
 
@@ -22,6 +24,8 @@ from domain.case import Case, CaseStatus
 
 CALLBACK_ID = "case_detail_modal"
 TEAM_SELECT_CALLBACK_ID = "team_select_modal"
+CLOSE_CASE_CALLBACK_ID = "close_case_modal"
+DERIVE_CASE_CALLBACK_ID = "derive_case_modal"
 
 # Equipos internos disponibles para derivar (tal cual se cargaron en el
 # picklist Internal_Team__c de Salesforce).
@@ -69,10 +73,12 @@ def _info_blocks(case: Case) -> list[dict]:
     return blocks
 
 
-def _base_view(case_id: str, blocks: list[dict], submit_label: str | None = None) -> dict:
+def _base_view(
+    case_id: str, blocks: list[dict], submit_label: str | None = None, callback_id: str = CALLBACK_ID
+) -> dict:
     view: dict = {
         "type": "modal",
-        "callback_id": CALLBACK_ID,
+        "callback_id": callback_id,
         "private_metadata": case_id,
         "title": {"type": "plain_text", "text": "Detalle del caso"},
         "close": {"type": "plain_text", "text": "Cerrar"},
@@ -97,7 +103,7 @@ def build_case_detail_modal(case: Case) -> dict:
 
 
 def build_start_screen(case: Case) -> dict:
-    """Pantalla 1: caso recién asignado a la sucursal — un solo botón, "Iniciar"."""
+    """Pantalla 1: caso recién asignado a la sucursal — un solo botón, "Iniciar". Sin campos, sin submit."""
     blocks = _info_blocks(case)
     blocks.append(
         {
@@ -117,7 +123,7 @@ def build_start_screen(case: Case) -> dict:
 
 
 def build_in_progress_choice_screen(case: Case) -> dict:
-    """Pantalla 2: caso en progreso — elegir Cerrar o Derivar."""
+    """Pantalla 2: caso en progreso — elegir Cerrar o Derivar. Sin campos, sin submit."""
     blocks = _info_blocks(case)
     blocks.append(
         {
@@ -142,7 +148,11 @@ def build_in_progress_choice_screen(case: Case) -> dict:
 
 
 def build_close_case_form(case: Case, error: str | None = None) -> dict:
-    """Pantalla 3a: cerrar el caso — comentario opcional + confirmar."""
+    """
+    Pantalla 3a: cerrar el caso — comentario opcional + submit real del
+    modal (callback_id propio, CLOSE_CASE_CALLBACK_ID), porque tiene un
+    bloque `input` y Slack exige un submit para eso.
+    """
     blocks = _info_blocks(case)
     if error:
         blocks.append(_error_block(error))
@@ -162,23 +172,21 @@ def build_close_case_form(case: Case, error: str | None = None) -> dict:
             "elements": [
                 {
                     "type": "button",
-                    "action_id": "confirm_close_case",
-                    "text": {"type": "plain_text", "text": "✅ Confirmar cierre", "emoji": True},
-                    "style": "primary",
-                },
-                {
-                    "type": "button",
                     "action_id": "back_to_choice",
                     "text": {"type": "plain_text", "text": "‹ Volver", "emoji": True},
-                },
+                }
             ],
         }
     )
-    return _base_view(case.id, blocks)
+    return _base_view(case.id, blocks, submit_label="✅ Confirmar cierre", callback_id=CLOSE_CASE_CALLBACK_ID)
 
 
 def build_derive_case_form(case: Case, error: str | None = None) -> dict:
-    """Pantalla 3b: derivar a un equipo interno — comentario opcional + equipo (obligatorio) + confirmar."""
+    """
+    Pantalla 3b: derivar a un equipo interno — comentario opcional +
+    equipo (obligatorio, Slack lo valida solo por no tener "optional")
+    + submit real del modal (callback_id propio, DERIVE_CASE_CALLBACK_ID).
+    """
     blocks = _info_blocks(case)
     if error:
         blocks.append(_error_block(error))
@@ -213,19 +221,15 @@ def build_derive_case_form(case: Case, error: str | None = None) -> dict:
             "elements": [
                 {
                     "type": "button",
-                    "action_id": "confirm_derive_case",
-                    "text": {"type": "plain_text", "text": "🔺 Confirmar derivación", "emoji": True},
-                    "style": "primary",
-                },
-                {
-                    "type": "button",
                     "action_id": "back_to_choice",
                     "text": {"type": "plain_text", "text": "‹ Volver", "emoji": True},
-                },
+                }
             ],
         }
     )
-    return _base_view(case.id, blocks)
+    return _base_view(
+        case.id, blocks, submit_label="🔺 Confirmar derivación", callback_id=DERIVE_CASE_CALLBACK_ID
+    )
 
 
 def _build_generic_modal(case: Case) -> dict:
