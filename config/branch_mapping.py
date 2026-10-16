@@ -13,20 +13,17 @@ Empieza con "U", ej. "U0123ABCDEF".
 SLACK_USER_TO_BRANCH: dict[str, str] = {
     # "U0123ABCDEF": "Sucursal Centro",
     # "U0456GHIJKL": "Sucursal Norte",
-    "U081F4X7QH1": "Sucursal Centro",
 }
 
 # Usuarios que ven TODOS los casos de la demo, sin filtrar por sucursal.
 SUPERUSER_SLACK_IDS: set[str] = {
     # "U0123ABCDEF",
-    "U081F514Z5H",
 }
 
 # Usuarios que ven los casos derivados a un equipo interno puntual
 # (Legales, Logistica, Marketing, Cobros), sin importar la sucursal.
 SLACK_USER_TO_TEAM: dict[str, str] = {
     # "U0789MNBVC": "Cobros",
-    "U0818K20N06": "Cobros",
 }
 
 
